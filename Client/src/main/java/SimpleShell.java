@@ -1,3 +1,5 @@
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,8 +12,18 @@ public class SimpleShell {
 
     public static void prettyPrint(String output) {
         // yep, make an effort to format things nicely, eh?
-        System.out.println(output);
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        try {
+            Object json = mapper.readValue(output, Object.class);
+            String pretty = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(json);
+            System.out.println(pretty);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
     }
+
     public static void main(String[] args) throws java.io.IOException {
 
         YouAreEll webber = new YouAreEll();
@@ -21,6 +33,7 @@ public class SimpleShell {
 
         ProcessBuilder pb = new ProcessBuilder();
         List<String> history = new ArrayList<String>();
+        ObjectMapper mapper = new ObjectMapper();
         int index = 0;
         //we break out with <ctrl c>
         while (true) {
@@ -58,6 +71,15 @@ public class SimpleShell {
 
                 // Specific Commands.
 
+                if (list.contains("ids") && list.size() > 2) {
+                    String name = list.get(1);
+                    String githubid = list.get(2);
+                    Identifier id = new Identifier(name, githubid);
+                    String json = mapper.writeValueAsString(id);
+                    webber.MakeURLCall("/ids", "POST", json);
+                    continue;
+                }
+
                 // ids
                 if (list.contains("ids")) {
                     String results = webber.get_ids();
@@ -65,11 +87,57 @@ public class SimpleShell {
                     continue;
                 }
 
+                if (list.contains("send")) {
+                    String fromid = list.get(1);
+                    StringBuilder message = new StringBuilder();
+                    int indexEndMessage = 0;
+
+                    for (int i = 3; i < list.size(); i++) {
+                        if (list.get(i).contains("'")) {
+                            indexEndMessage = i;
+                            break;
+                        }
+                        indexEndMessage = 2;
+                    }
+
+                    for (int i = 2; i < indexEndMessage; i++) {
+                        if (i == 2) {
+                            message.append(list.get(i).substring(1));
+                            message.append(" ");
+                        } else {
+                            message.append(list.get(i));
+                            message.append(" ");
+                        }
+                    }
+
+                    message.append(list.get(indexEndMessage).substring(0, list.get(indexEndMessage).length()-1));
+                    String messageString = message.toString();
+
+                    if (list.size() - 1 == indexEndMessage) {
+                        Message obj = new Message(fromid, messageString);
+                        String json = mapper.writeValueAsString(obj);
+                        webber.MakeURLCall("/ids/" + fromid + "/messages", "POST", json);
+                    } else {
+                        String toid = list.get(list.size() - 1);
+                        Message obj = new Message(fromid, toid, messageString);
+                        String json = mapper.writeValueAsString(obj);
+                        webber.MakeURLCall("/ids/" + fromid + "/messages", "POST", json);
+                    }
+                    continue;
+                }
+
                 // messages
                 if (list.contains("messages")) {
-                    String results = webber.get_messages();
-                    SimpleShell.prettyPrint(results);
-                    continue;
+                    if (list.size() == 1) {
+                        String results = webber.get_messages();
+                        SimpleShell.prettyPrint(results);
+                        continue;
+                    } else {
+                        String urlpath = "/ids/" + list.get(1) + "/messages";
+                        String results = webber.MakeURLCall(urlpath, "GET", "");
+                        SimpleShell.prettyPrint(results);
+                        continue;
+                    }
                 }
                 // you need to add a bunch more.
 
